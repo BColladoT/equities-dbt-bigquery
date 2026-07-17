@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: stg_alpaca__bars_1min
+    description: >
+      One row per 1-minute bar as Alpaca sent it, typed and renamed, with ET session context
+      derived from the UTC timestamp. No filtering by design -- see the model comment.
+      On the dev (DuckDB) target this covers the committed 10-symbol / 220,388-row sample;
+      on prod (BigQuery, not yet loaded) it would cover 573 symbols / 20,391,519 rows.
+    columns:
+      - name: bar_key
+        description: >
+          Surrogate key over (symbol, timestamp). One row per bar. The `unique` test on this
+          column is the one most likely to actually fire in production: it catches a re-run
+          `bq load` double-inserting and silently doubling the table.
+        tests:
+          - unique
+          - not_null
+      - name: symbol
+        tests: [not_null]
+      - name: bar_ts_utc
+        description: Bar open time in UTC, exactly as the vendor sent it.
+        tests: [not_null]
+      - name: bar_ts_et
+        description: Bar open time as New York wall-clock. Derived via macros/to_et.sql.
+        tests: [not_null]
+      - name: session_date
+        description: >
+          ET calendar date. DERIVED, not inherited from the UTC partition key -- which is why
+          after-hours bars spilling across a UTC date boundary (20:00 ET = 00:00 UTC next day)
+          land on the correct session.
+        tests: [not_null]
+      - name: session_phase
+        description: >
+          ET session bucket. The accepted_values test here is a timezone tripwire: if the
+          UTC->ET conversion ever drifted far enough, bars would pile into the wrong bucket.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['premarket', 'regular', 'postmarket']
+
+  - name: stg_backtest__setups
+    description: 909 candidate setups. IN-SAMPLE; walk-forward out-of-sample validation pending.
+    columns:
+      - name: symbol
+        description: >
+          Ticker. The relationships test below asserts every setup symbol has bars loaded.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_alpaca__bars_1min')
+                field: symbol
+              # SEVERITY IS TARGET-DEPENDENT, AND THIS IS THE HONEST READING OF THE CONTRACT.
+              #
+              # On prod the universe is DEFINED as "every symbol that ever produced a setup"
+              # (573 of them), so a setup without bars means the load dropped rows. That is a
+              # real error and it fails the build.
+              #
+              # On dev the bar sample is deliberately 10 of those 573 symbols, so 563 setup
+              # symbols have no bars BY CONSTRUCTION. Asserting otherwise would be asserting
+              # something we know is false. The test still runs and still reports the orphans --
+              # it is not skipped and not deleted -- it just does not pretend the sample is the
+              # full universe. Expect ~850 of 909 rows to warn here on dev.
+              config:
+                severity: "{{ 'error' if target.type == 'bigquery' else 'warn' }}"
+      - name: setup_date
+        tests: [not_null]
+
+  - name: stg_backtest__results
+    description: >
+      Outcome per candidate setup, from the tick-based V5 engine. IN-SAMPLE.
+      Reported, not recomputed -- see the model comment.
+    columns:
+      - name: symbol
+        tests: [not_null]
+      - name: setup_date
+        tests: [not_null]
