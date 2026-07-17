@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: int_bars_session_vwap
+    description: >
+      Session VWAP anchored at 09:30 ET, plus day_open / day_high / day_gain, one row per
+      regular-session bar. The load-bearing materialisation in this project: a table, because as
+      a view its window functions would recompute on every downstream query.
+      Intermediate rather than staging because session_vwap exists due to OUR strategy, not the
+      vendor's feed -- see the model comment.
+    columns:
+      - name: bar_key
+        tests: [unique, not_null]
+      - name: symbol
+        tests: [not_null]
+      - name: session_date
+        tests: [not_null]
+      - name: session_vwap
+        description: >
+          Cumulative sum(typical_price * volume) / sum(volume) from the session's first bar at or
+          after 09:30 ET. NOT Alpaca's per-bar vwap (that is stg_alpaca__bars_1min.bar_vwap).
+      - name: vwap_extension_ratio
+        description: >
+          close / session_vwap. Compared against the frozen 1.15 in int_bars_exhaustion.
+          NOTE: CLAUDE.md in the engine repo says "extends >120% above VWAP"; the actual source
+          (v5_strict.py:47) says 1.15, i.e. 15% above. The code won. See spec section 2.
+
+  - name: int_bars_exhaustion
+    description: >
+      V5's 2-of-3 entry criteria per bar. Thresholds frozen at v5_strict.py:47-50 and never
+      tuned to match the backtest.
+    columns:
+      - name: bar_key
+        tests: [unique, not_null]
+      - name: criteria_met
+        description: Count of the 2-of-3 criteria met (0-3). Entry requires >= 2.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3]
+                quote: false
+
+  - name: int_session_features
+    description: >
+      Bar grain aggregated to (symbol, session_date) so the funnel can join one row per setup
+      without fanning out. The unique_combination test below is what guarantees that.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [symbol, session_date]
+    columns:
+      - name: symbol
+        tests: [not_null]
+      - name: session_date
+        tests: [not_null]
+      - name: peak_extension_ts_et
+        description: Timestamp of the session's most-extended bar. Ties broken by earliest bar.
+
+  - name: int_setup_outcomes
+    description: >
+      909 candidates -> 327 traded -> 258 won (78.9% on executed trades).
+      IN-SAMPLE; walk-forward out-of-sample validation pending.
+      Reads the seeds only, so these counts hold on every target.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [symbol, setup_date]
+    columns:
+      - name: symbol
+        tests: [not_null]
+      - name: setup_date
+        tests: [not_null]
+      - name: is_traded
+        description: The setup actually triggered an entry. 327 of 909.
+        tests: [not_null]
+      - name: is_winner
+        description: The setup traded AND won. 258 of 327 executed trades.
+        tests: [not_null]
