@@ -1,0 +1,24 @@
+version: 2
+
+seeds:
+  - name: setups
+    description: >
+      909 candidate parabolic setups from the V5 relaxed scanner, 2020-07-27 to 2024-12-30.
+      IN-SAMPLE. Walk-forward out-of-sample validation pending. Static reference data, version
+      controlled with the project -- which is exactly what seeds are for. Complete on every
+      target: the 10-symbol dev sample subsets the BARS, never the seeds, so the funnel count
+      stays 909 regardless of which target you build.
+    config:
+      column_types:
+        symbol: string
+        date: date
+
+  - name: backtest_results
+    description: >
+      Outcome per candidate setup: trades taken, PnL, win/loss. 909 rows, of which 327 were
+      actually traded and 258 won (78.9% win rate on executed trades). IN-SAMPLE.
+      Produced by the tick-based V5 engine, NOT by this dbt project. See spec 5.1.
+    config:
+      column_types:
+        symbol: string
+        date: date

@@ -3,7 +3,16 @@
 # machine (the `py` launcher's default 3.11 points at a deleted install, and bare `python`
 # resolves to an unrelated tool's venv). See docs/superpowers/specs/ §2 and §10.
 dbt-core==1.12.0
-dbt-bigquery==1.12.0
 
-# Loader only — reads the parquet cache to build the BigQuery subset. Not used by dbt itself.
+# TWO ADAPTERS, ONE CODEBASE. See README "Two targets".
+#   duckdb   — the dev target. Reads the committed 10-symbol sample parquet. Runs today, on any
+#              machine, with no cloud account and no credentials. This is what `dbt build` uses.
+#   bigquery — the prod target. Configured, NOT yet run: no GCP project/billing exists yet.
+# Installing dbt-duckdb does not downgrade dbt-core — verified: core stays 1.12.0 with both
+# adapters registered side by side.
+dbt-bigquery==1.12.0
+dbt-duckdb==1.10.1
+
+# Loader only — reads the parquet cache to build the BigQuery subset and the committed dev
+# sample. Not used by dbt itself.
 pyarrow==25.0.0

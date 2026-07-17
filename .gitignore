@@ -7,5 +7,10 @@ venv/
 __pycache__/
 .env
 .user.yml
-profiles.yml
 build/
+
+# profiles.yml is deliberately NOT ignored -- it holds no credentials (DuckDB = a local file
+# path; BigQuery = method:oauth + an env var), and committing it is what makes `dbt build` work
+# on a fresh clone. Real credentials live in gcloud's application-default store, outside the repo.
+*.duckdb
+*.duckdb.wal

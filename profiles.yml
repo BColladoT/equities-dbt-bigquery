@@ -1,0 +1,48 @@
+# Repo-local profiles.yml. dbt checks the current working directory before ~/.dbt/, so running
+# `dbt build` from the repo root picks this up with no further setup.
+#
+# WHY THIS IS COMMITTED (the plan originally put it in ~/.dbt/ and said "never committed"):
+# it contains no credentials. The dev target is a local file path. The prod target uses
+# `method: oauth`, which reads gcloud application-default credentials from outside the repo --
+# no service-account key file exists, so no key file can leak. Committing it is what makes
+# "clone the repo and `dbt build` works" true, which is the point of the dev target.
+
+equities:
+  target: dev
+  outputs:
+
+    # DEV -- DuckDB over the committed 10-symbol sample (data/sample/bars_1min_sample.parquet).
+    # This is the target that actually runs today. No cloud account, no credentials, no cost.
+    dev:
+      type: duckdb
+      # The local warehouse. Gitignored (*.duckdb) and rebuilt by `dbt build` from the committed
+      # sample parquet + seeds, so it is never a source of truth -- just where the dev target
+      # materialises. Kept at the repo root rather than under target/ because DuckDB opens the
+      # file before dbt creates target/, and because it is a database, not a build artifact.
+      path: 'equities.duckdb'
+      # Matches the BigQuery `dataset` below, so both targets produce the same layer schema
+      # names (equities_staging / equities_intermediate / equities_marts) and the layer
+      # boundary reads identically whichever target you build.
+      schema: equities
+      threads: 4
+      settings:
+        # Force the session timezone to UTC so a column named `bar_ts_utc` actually displays UTC
+        # rather than the reader's local zone. DuckDB renders TIMESTAMPTZ in the session zone;
+        # without this, `bar_ts_utc` would print as Europe/Madrid on this machine and as
+        # something else on yours. The ET conversion itself is unaffected -- `AT TIME ZONE`
+        # is absolute (see macros/to_et.sql) -- but the surrogate key hashes the timestamp's
+        # text, so a drifting session zone would drift the key. Pinning it keeps both stable.
+        TimeZone: 'UTC'
+
+    # PROD -- BigQuery. CONFIGURED BUT NOT YET RUN. There is no GCP project/billing account
+    # attached yet, so nothing has been loaded and no model has been built against BigQuery.
+    # Stated plainly here rather than left to be discovered. See README.
+    prod:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: equities
+      location: EU
+      threads: 4
+      timeout_seconds: 300
+      priority: interactive

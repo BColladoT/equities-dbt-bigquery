@@ -1,0 +1,40 @@
+version: 2
+
+sources:
+  - name: alpaca
+    # BigQuery (prod) coordinates. On the DuckDB dev target these two lines are inert -- the
+    # `external_location` meta below replaces the relation entirely -- which is why the default
+    # here is harmless: nothing reads it unless target.type is bigquery.
+    database: "{{ env_var('GCP_PROJECT_ID', 'bigquery-project-not-configured') }}"
+    schema: equities_raw
+    description: >
+      Raw 1-minute OHLCV bars from the parabolic-reversal-trading-engine parquet cache.
+
+      TWO TARGETS, ONE DEFINITION:
+        prod (BigQuery) -- 573 symbols, every symbol that ever produced a setup, full history,
+          20,391,519 rows. CONFIGURED BUT NOT YET LOADED: there is no GCP account attached yet.
+        dev (DuckDB) -- a committed 10-symbol, 220,388-row sample of the same real data
+          (data/sample/bars_1min_sample.parquet). This is what actually runs today.
+
+      The dev sample subsets rows, not columns: the schema is identical, so every model and test
+      below is exercised for real. What it does NOT cover is scale -- see README.
+    tables:
+      - name: bars_1min
+        description: >
+          One row per minute per symbol, as Alpaca sent it. Bars are SPARSE: micro-caps only
+          produce a bar when a trade occurs, so a symbol may have a few thousand bars across
+          2019-2024 rather than 390/day. Do not assume a dense grid.
+        meta:
+          # dbt-duckdb reads this and swaps the relation for the parquet scan. The BigQuery
+          # adapter does not know the key and ignores it, so one source definition serves both
+          # targets. Path is relative to the dbt project root (where you run dbt from).
+          external_location: "read_parquet('data/sample/bars_1min_sample.parquet')"
+        columns:
+          - name: timestamp
+            description: Bar open time, UTC. Partition key on the BigQuery raw table.
+          - name: symbol
+            description: Ticker. Clustering key on the BigQuery raw table.
+          - name: vwap
+            description: >
+              PER-BAR VWAP as sent by Alpaca -- one minute's worth. This is NOT session VWAP.
+              Session VWAP is computed in int_bars_session_vwap. Do not confuse them.
