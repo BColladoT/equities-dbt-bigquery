@@ -34,9 +34,9 @@ equities:
         # text, so a drifting session zone would drift the key. Pinning it keeps both stable.
         TimeZone: 'UTC'
 
-    # PROD -- BigQuery. CONFIGURED BUT NOT YET RUN. There is no GCP project/billing account
-    # attached yet, so nothing has been loaded and no model has been built against BigQuery.
-    # Stated plainly here rather than left to be discovered. See README.
+    # PROD -- BigQuery. LOADED AND BUILT (2026-07-17): project quant-trading-502717, EU, 20.4M
+    # rows loaded, all 9 models materialised, all 53 tests green, €0.00 spend against a live €1
+    # budget alert. method:oauth reads gcloud application-default credentials from outside the repo.
     prod:
       type: bigquery
       method: oauth

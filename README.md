@@ -16,16 +16,18 @@ production, and nothing here should be read that way.
 | | status |
 |---|---|
 | **dbt DAG, models, tests, docs** | ✅ built and running |
-| **`dbt build`** | ✅ **52 pass, 0 errors, 1 expected warning** (DuckDB dev target) |
+| **`dbt build` (DuckDB dev)** | ✅ 52 pass, 0 errors, 1 expected warning |
+| **`dbt build` (BigQuery prod)** | ✅ **53 pass, 0 errors, 0 warnings** |
 | **DuckDB dev target** | ✅ runs today, on any machine, no cloud account needed |
-| **BigQuery prod target** | ⚙️ **configured, NOT yet run** — no GCP project exists yet |
-| **Looker Studio dashboard** | ❌ not built — depends on BigQuery |
+| **BigQuery prod target** | ✅ **loaded + built** — 20,391,519 rows, project `quant-trading-502717`, EU |
+| **Cost so far** | ✅ **€0.00** — 1.26 GB of a 10 GiB free tier; €1 budget alert live |
+| **Looker Studio dashboard** | ⏳ pending |
 | **All metrics below** | ⚠️ **IN-SAMPLE.** Walk-forward out-of-sample validation in progress. |
 
-The BigQuery target is real code — partitioning, clustering, the `bq load` script, the 573-symbol
-subset builder — but it has **never been executed**, because that needs a billed Google Cloud
-account. Saying "BigQuery" while having never run a query against it would be a lie, so: it is
-configured and unrun. That gets fixed by creating the project, not by rewording this table.
+Both targets are real and both have run. The 20.4M-row bar table is loaded into BigQuery
+(partitioned by date, clustered by symbol), all 9 models materialise there, and all 53 tests pass
+— including the `relationships` test at **error** severity, which on prod proves every one of the
+909 setups' symbols has bars. Total spend to date: **€0.00**, verified against a €1 budget alert.
 
 ## The numbers, with the denominator attached
 
@@ -118,23 +120,33 @@ reproduce the original backtest, and the two do **not** validate each other:
 | VWAP anchor | first bar of the tick feed | **09:30 ET** (explicit choice) |
 | engine | Python | SQL |
 
-Measured on the 10 sample symbols:
+Measured on the **full 573-symbol universe** (BigQuery prod), with the 10-symbol dev sample beside
+it:
 
 ```
-tick backtest setups : 59
-our SQL signal days  : 53
-        BOTH agree   : 34      ← 57.6% overlap
-     backtest only   : 25      tick data saw setups our minute bars didn't
-          SQL only   : 19      our minute bars fired where the scanner never looked
+                         full universe (prod)     10-symbol sample (dev)
+backtest setups        : 909                      59
+our SQL signal-days    : 1,273                    53
+        BOTH agree     : 523   ← 57.5% overlap    34   ← 57.6% overlap
+     backtest only     : 386   scanner saw, we didn't
+          SQL only     : 750   our minute bars fired where the scanner never looked
 ```
 
-**The totals lie.** 53 vs 59 looks like near-agreement; only 34 actually match. Comparing counts
-instead of sets would have hidden a ~42% disagreement running in *both* directions.
+**The totals lie, and the overlap holds.** On the full universe, 1,273 vs 909 looks like "we find
+more"; the truth is that only 523 of the 909 actually coincide — a 57.5% overlap. The dev sample
+predicted 57.6% off 10 symbols; the full 573-symbol run landed at 57.5%. That the two agree to a
+tenth of a percent is itself the evidence that the sample wasn't cherry-picked.
+
+Why they diverge is structural, not a bug: the 909 are *scanner-detected parabolic setups*; our
+1,273 are *bars where the entry criteria fire*. Different definitions, different input granularity
+(tick-aggregated vs 1-minute), different VWAP anchor. `fct_signal_candidates` reimplements the
+**entry rules**, never the scanner — so it fires on 750 days the scanner didn't flag and stays
+silent on 386 it did.
 
 Thresholds are **frozen** at the engine's own values (`v5_strict.py:47-50`): `close/vwap >= 1.15`,
 `volume/vol_peak <= 0.70`, `close/day_high >= 0.93`, `day_gain >= 0.50`, entry window 09:45–14:00
-ET. They are **not** tuning knobs. Nudging them until 53 became 59 would have fitted the model to
-the answer and made it worthless. The divergence is a finding, published as measured.
+ET. They are **not** tuning knobs. Nudging them until 1,273 became 909 would have fitted the model
+to the answer and made it worthless. The divergence is a finding, published as measured.
 
 ## Tests — 53 of them, and they're contracts, not discoveries
 
@@ -170,20 +182,32 @@ them; it just doesn't assert something known to be false.
 | item | measured |
 |---|---|
 | prod storage | 1.26 GB (free tier: **10 GiB**) |
-| one full scan | 0.0013 TiB → ~790 free full scans/month (free tier: **1 TiB/mo**) |
-| **expected spend** | **€0.00** |
+| one full `dbt build` | ~few GiB scanned (free tier: **1 TiB/mo**) |
+| **actual spend to date** | **€0.00** |
 
 Partitioned by date, clustered by symbol from day one — good practice *and* what holds the bill at
-zero. A €1 budget alert goes up before anything is loaded.
+zero. A €1 budget alert was verified live **before** the first byte was loaded.
+
+**Partition pruning, measured on the real table** (`bq query --dry_run`, so bytes billed without
+running the query):
+
+```
+SELECT SUM(volume) FROM bars_1min                              → 163,132,152 bytes
+SELECT SUM(volume) FROM bars_1min WHERE timestamp in one day   →     440,544 bytes
+```
+
+**370× less data scanned** for a single-day query, because the date filter eliminates all but one
+partition. That is the concrete answer to "how does partitioning save you money" — not "it scans
+less," but *163 MB versus 440 KB on this table*.
 
 ## What this project does not do
 
 Stated so nobody has to discover it by reading the code:
 
-- **Has not run on BigQuery.** The target is configured, not exercised.
-- **No Looker Studio dashboard.** Depends on the above.
+- **No Looker Studio dashboard yet.** The marts are live in BigQuery and ready to connect; the
+  dashboard itself is the last remaining step.
 - **Does not validate the trading strategy.** It reports a backtest it did not run, and separately
-  reimplements the entry rules — the two disagree ~42% of the time and neither confirms the other.
+  reimplements the entry rules — the two overlap only 57.5% and neither confirms the other.
 - **Does not test the timezone macro against DST boundaries.** The conversion is defended by
   construction (one call site, no hardcoded offsets, engine-native tz tables). Verifying it
   properly needs a fixture of known DST-boundary timestamps with expected ET values. Worth doing.

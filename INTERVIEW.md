@@ -107,11 +107,18 @@ question, so I'd rather own it here than be caught by it there.
 
 > _Your answer here._
 >
-> **This answer needs a real measured number, and you don't have one yet.** Task 4 Step 5 of the
-> plan runs `bq query --dry_run` twice — once with a date filter, once without — and reports bytes
-> billed without charging. Run it once BigQuery is live and put both numbers here. A guessed
-> answer ("it scans less data") is worth nothing; "a filtered query scans X MB vs Y GB unfiltered,
-> on my table" is worth a lot.
+> **The measured numbers are now in — use them, but write the explanation yourself.** Measured on
+> the live table with `bq query --dry_run` (reports bytes billed without running the query):
+>
+> | query | bytes scanned |
+> |---|---|
+> | `SELECT SUM(volume) FROM bars_1min` (all partitions) | 163,132,152 (~163 MB) |
+> | same, `WHERE timestamp` within a single day | 440,544 (~440 KB) |
+>
+> That's **370× less data** for a one-day query. The date filter eliminates every partition but
+> one before a byte is read. Your answer should turn that into the *why*: BigQuery bills by bytes
+> scanned, partition pruning cuts bytes scanned, so a dashboard that filters by date reads
+> kilobytes instead of hundreds of megabytes.
 >
 > Also be ready for: *"you said the whole thing is 1.26 GB and free — so why bother partitioning
 > at all?"* That's the sharper question.
@@ -125,10 +132,13 @@ Not in the brief, but likely given what's in this repo:
 - *"Your win rate is 78.9% — out of how many, and who selected them?"* (The funnel is the answer.
   909 → 327 → 258. Volunteer it before you're asked.)
 - *"Is this validated?"* (No. In-sample. Walk-forward in progress. Say so immediately.)
-- *"Does your SQL agree with your backtest?"* (No — 57.6% overlap on the sample. Know why, and know
-  why you didn't tune the thresholds to close the gap. This is your strongest answer if you can
-  deliver it calmly.)
-- *"You've never run this on BigQuery, have you?"* (Not yet. The target is configured, not
-  exercised. The README says so.)
+- *"Does your SQL agree with your backtest?"* (No — 57.5% overlap on the full universe, 57.6% on
+  the sample. Know why, and know why you didn't tune the thresholds to close the gap. This is your
+  strongest answer if you can deliver it calmly. The sample-vs-full agreement to a tenth of a
+  percent is a bonus point: it shows the sample wasn't cherry-picked.)
+- *"Did you actually run this on BigQuery, or just DuckDB?"* (Both. 20.4M rows loaded to
+  `quant-trading-502717`, all 9 models built on BigQuery, 53 tests green, €0.00. But **you did not
+  run the load or the build yourself** — it was done for you while you were away. Own that; see the
+  honest record at the top of this file.)
 - *"Why is `never_triggered` the biggest bucket?"* (582 of 909. Is that a bug or the strategy
   working as designed?)
