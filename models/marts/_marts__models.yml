@@ -1,0 +1,85 @@
+version: 2
+
+models:
+  - name: fct_signal_candidates
+    description: >
+      One row per bar where V5's 2-of-3 entry criteria fire, computed in SQL directly from raw
+      1-minute bars. This is the model that makes dbt COMPUTE the strategy rather than report a
+      CSV of results Python already produced.
+
+      REIMPLEMENTATION, NOT A REPRODUCTION. The original backtest ran on tick data aggregated to
+      60-second bars with VWAP anchored at its first tick bar; this runs on Alpaca 1-minute bars
+      anchored at 09:30 ET. Counts differ BY CONSTRUCTION and the two do NOT validate each other.
+      Thresholds frozen at v5_strict.py:47-50 -- a divergence is a finding to explain, never a
+      number to tune. See docs/superpowers/specs/ 5.1.
+
+      IN-SAMPLE; walk-forward out-of-sample validation pending.
+    columns:
+      - name: bar_key
+        description: Surrogate key inherited from staging. One row per qualifying bar.
+        tests:
+          - unique
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+      - name: session_date
+        tests:
+          - not_null
+      - name: criteria_met
+        description: >
+          How many of the 2-of-3 criteria fired. This mart filters to >= 2, so 0 or 1 appearing
+          here would mean the filter broke. A free tripwire on our own WHERE clause.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [2, 3]
+                quote: false
+      - name: is_best_setup_of_day
+        description: >
+          True for the highest-extension bar of the symbol-day. V5 takes exactly one position per
+          day; this flag lets a consumer reproduce that selection without this model destroying
+          the other candidates first.
+        tests:
+          - not_null
+
+  - name: fct_setup_funnel
+    description: >
+      One row per candidate setup: 909 candidates -> 327 traded -> 258 won (78.9% win rate on
+      EXECUTED trades). Enriched with session-level features from the bar pipeline where bars are
+      available. The denominator is surfaced on purpose rather than collapsed into a single
+      headline percentage.
+
+      IN-SAMPLE; walk-forward out-of-sample validation pending. Not live, audited, or validated.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [symbol, setup_date]
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+      - name: setup_date
+        tests:
+          - not_null
+      - name: funnel_stage
+        description: >
+          Mutually exclusive stage per setup. 'never_triggered' is the largest bucket (582 of
+          909) and that is the most interesting fact in the dataset, not a defect.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['won', 'lost', 'never_triggered']
+      - name: is_candidate
+        description: Always true — every row here was a candidate. Present so the funnel reads as a funnel.
+        tests:
+          - not_null
+      - name: has_bar_data
+        description: >
+          Whether session features joined. False for setups whose symbol is outside the loaded bar
+          universe — on the DuckDB dev target that is most of them, since the committed sample
+          carries only 10 symbols. Explicit so "no bars loaded" is never mistaken for
+          "nothing happened".
+        tests:
+          - not_null
