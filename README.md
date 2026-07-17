@@ -21,7 +21,7 @@ production, and nothing here should be read that way.
 | **DuckDB dev target** | ✅ runs today, on any machine, no cloud account needed |
 | **BigQuery prod target** | ✅ **loaded + built** — 20,391,519 rows, project `quant-trading-502717`, EU |
 | **Cost so far** | ✅ **€0.00** — 1.26 GB of a 10 GiB free tier; €1 budget alert live |
-| **Looker Studio dashboard** | ⏳ pending |
+| **Looker Studio dashboard** | ⏳ one click away — [build guide](docs/looker_studio_guide.md) with a pre-connected link |
 | **All metrics below** | ⚠️ **IN-SAMPLE.** Walk-forward out-of-sample validation in progress. |
 
 Both targets are real and both have run. The 20.4M-row bar table is loaded into BigQuery
