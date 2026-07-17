@@ -1,0 +1,9 @@
+# dbt Core (NOT dbt Cloud) — free, and the mechanics stay visible.
+# Pinned: verified to resolve on Python 3.10.0, which is the only working interpreter on this
+# machine (the `py` launcher's default 3.11 points at a deleted install, and bare `python`
+# resolves to an unrelated tool's venv). See docs/superpowers/specs/ §2 and §10.
+dbt-core==1.12.0
+dbt-bigquery==1.12.0
+
+# Loader only — reads the parquet cache to build the BigQuery subset. Not used by dbt itself.
+pyarrow==25.0.0
