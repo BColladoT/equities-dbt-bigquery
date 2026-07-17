@@ -35,6 +35,10 @@ because "I verified rather than assumed" is itself part of the story.
 | — | **`C:\quant_trading\venv` is broken** — polars + pyarrow fail native DLL load | Do not attempt repair; not needed |
 | — | **`data/cache/*.parquet` (root) are DAILY bars** despite `_1min_` in the filename | Trap: use `1min_extended/` only |
 | — | Raw `vwap` column is **per-bar**, not session-anchored | Session VWAP must be computed, not read |
+| "price extends **>120% above VWAP**" (CLAUDE.md **and** the project brief) | **`v5_strict.py:47`: `min_vwap_extension = 1.15`** → `close/vwap >= 1.15`, i.e. **15% above VWAP**. The code's own docstring (`v5_strict.py:21`) agrees: *"VWAP extension > 15%"* | **CLAUDE.md is wrong.** 120% above VWAP would be `close/vwap >= 2.2` — a different strategy. Models use **1.15**. CLAUDE.md to be fixed separately, in the engine repo. |
+| "VWAP **anchored at 9:30 AM ET**" (CLAUDE.md) | **V5 anchors at the first bar of the tick feed** (`v5_strict.py:75-89`) — there is no 9:30 filter in the code | Docs and code disagree. We anchor at **9:30 ET by explicit choice** (better-defined, matches documented intent) and say so rather than minimise it. |
+| — | **0 malformed bars across all 20,391,519 rows** — no `low > high`, no OHLC violations, no nulls, no duplicate timestamps, no negative volume | Staging must **not** filter. A filter would silently swallow the garbage the test exists to catch. Tests are **tripwires, not cleanup**. |
+| — | V5 backtest runs on **tick data aggregated to 60s bars** (`v5_strict.py:65-69`); this project runs on **Alpaca 1-min bars** | Different inputs → `fct_signal_candidates` **cannot reproduce** 909→327 and must not try. See §5.1. |
 
 **Verified source schema** (`data/cache/1min_extended/*.parquet`, one file per symbol, no overlapping ranges):
 
@@ -143,11 +147,46 @@ Resolution: `fct_signal_candidates` gives the bars pipeline a real consumer and 
 **compute the strategy** rather than report a CSV of results Python already produced.
 `int_session_features` additionally feeds session-level context onto the funnel.
 
+## 5.1 The V5 entry rules — frozen, not fitted
+
+Read from `C:\quant_trading\src\strategies\v5_strict.py` (strategy `v5_relaxed_scanner` → class
+`TickBacktestEngineV5`). These values are **copied, never tuned**:
+
+```
+quality gates (ALL must pass)              2-of-3 criteria (need >= 2)
+  09:45 <= t <= 14:00 ET                     close / vwap      >= 1.15
+  day_gain >= 0.50   (50% off day open)      volume / vol_peak <= 0.70
+  close >= vwap      (momentum intact)       close / day_high  >= 0.93
+
+  vol_peak  = max(volume) over last 10 bars, inclusive of current   (v5_strict.py:125-127)
+  day_open  = first bar's open                                       (v5_strict.py:91-92)
+  day_high  = running max(high), inclusive of current                (v5_strict.py:93-94)
+  vwap      = cumulative sum(typical_price * volume) / sum(volume),
+              typical_price = (high + low + close) / 3               (v5_strict.py:86-89)
+  selection = best setup per day (highest vwap_ext), max 1 position/day
+```
+
+### `fct_signal_candidates` is a reimplementation, not a reproduction
+
+| | V5 backtest | this dbt project |
+|---|---|---|
+| input data | tick trades → 60s bars | Alpaca 1-min bars |
+| VWAP anchor | first bar of tick feed | **09:30 ET** (explicit choice) |
+| engine | Python, `TickBacktestEngineV5` | SQL, BigQuery |
+
+The signal counts **will differ, by construction**. This is stated plainly in the README and on
+the dashboard. The two are **not** a validation of each other.
+
+**The trap, named so it can be refused:** if our SQL count disagrees with the tick backtest and we
+adjust `1.15 / 0.70 / 0.93` to close the gap, we have fitted to the answer and the model means
+nothing. Thresholds are frozen at the registry values. A divergence is a **finding to explain**,
+never a number to tune. If the gap looks embarrassing, it gets published anyway.
+
 ## 6. Models
 
 | model | layer | materialization | grain | reads from | purpose |
 |---|---|---|---|---|---|
-| `stg_alpaca__bars_1min` | staging | view | 1 bar | `source: bars_1min` | cast, rename, UTC→ET, `session_date`, `session_phase`, drop malformed |
+| `stg_alpaca__bars_1min` | staging | view | 1 bar | `source: bars_1min` | cast, rename, UTC→ET, `session_date`, `session_phase`. **No filtering** — data verified clean (§2) |
 | `stg_backtest__setups` | staging | view | 1 setup | `seed: setups` | typed; `gain_percent` → fraction |
 | `stg_backtest__results` | staging | view | 1 setup | `seed: backtest_results` | typed; `win`/`loss` → boolean |
 | `int_bars_session_vwap` | intermediate | **table**, partitioned by `session_date`, clustered by `symbol` | 1 bar | `stg_alpaca__bars_1min` | session VWAP anchored 9:30 ET; `vwap_extension_pct` |
@@ -198,6 +237,20 @@ The two singular tests encode **domain rules SQL cannot infer**. `low > high` ca
 real market. A signal at 03:00 ET means UTC→ET conversion broke — the highest-probability bug in
 this project, since *every* source timestamp is UTC.
 
+### These tests pass today. That is the point.
+
+§2 established the source is clean: 0 malformed bars, 0 nulls, 0 duplicates in 20.4M rows. So
+every test above is green on day one. The honest framing, and the answer to *"your tests are
+trivially green — what do they prove?"*:
+
+> **Tests are contracts, not discoveries.** They encode what must remain true, and they fire when
+> it stops being true. A test that has never failed is a tripwire nobody has tripped, not a test
+> that does nothing.
+
+The one most likely to actually fire is **`unique` on `bar_key`** — it catches a re-run `bq load`
+double-inserting and silently doubling the table to 40.8M rows. That is a real, likely,
+easy-to-miss failure, and it is why the test exists.
+
 ## 8. Cost
 
 | item | estimate |
@@ -245,8 +298,9 @@ the build is not walked through by Brian himself, that fact gets recorded in `IN
 | UTC→ET across DST (EST/EDT) | Use BigQuery `America/New_York` tz conversion, never a fixed offset |
 | After-hours bars spill to next UTC date | Raw partitioned by UTC `DATE(timestamp)`; `session_date` derived in ET in staging |
 | `fct_signal_candidates` is circular if only setup dates are loaded | Full history for all 573 symbols is loaded, incl. non-setup days |
-| Thresholds tuned to make signals match known setups | Thresholds come from the existing strategy registry (V5 relaxed), not fitted here |
-| dbt-bigquery / Python 3.10 incompatibility | Verify at install; fall back to a fresh Python 3.12 if needed |
+| **Thresholds tuned to make signals match known setups** | **Frozen at `1.15 / 0.70 / 0.93` from `v5_strict.py:47-50` (§5.1). Divergence is a finding to explain, never a number to tune.** |
+| ~~dbt-bigquery / Python 3.10 incompatibility~~ | **RESOLVED 2026-07-17** — `dbt-core 1.12.0` + `dbt-bigquery 1.12.0` both resolve on Python 3.10. No 3.12 fallback needed. |
+| Reader mistakes `fct_signal_candidates` for a validation of the backtest | §5.1 states the reimplementation boundary; repeated in README and on the dashboard |
 
 ## 12. Out of scope
 
