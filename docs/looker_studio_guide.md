@@ -1,85 +1,91 @@
-# Looker Studio dashboard — build guide
+# Looker Studio dashboard — exact build recipe
 
-Everything upstream is done: the marts are live in BigQuery (`equities_marts.fct_setup_funnel` and
-`equities_marts.fct_signal_candidates`), partitioned, clustered, tested. This is the last step, and
-it has to be done in your Google account — nobody can log in as you, which is why it isn't
-automated.
-
-Budget: ~10–15 minutes. You will connect two tables, drop in five charts, add one caveat box, and
-share.
+The marts are live in BigQuery (`equities_marts.fct_setup_funnel`, `equities_marts.fct_signal_candidates`),
+partitioned, clustered, tested. The dashboard is a thin presentation layer over them — all the logic
+lives in dbt. This recipe is the *exact* build that was assembled and verified once against the live
+marts; every value below is what the charts actually showed. Rebuilding is a deterministic ~10-minute
+job. It must be done signed in as brian.collado7@gmail.com — nobody can log in as you.
 
 ---
 
-## Step 0 — open a report already connected to your data
+## Step 0 — create a report that ACTUALLY SAVES (read this first)
 
-Click this (signed in as brian.collado7@gmail.com). It opens a **new Looker Studio report with both
-marts pre-connected** via the Looker Studio Linking API, so you skip the "add data source" dance:
+**The trap that cost the first build:** a report opened via the Linking API URL
+(`lookerstudio.google.com/reporting/create?...`) is a *transient* draft. Its URL stays at
+`/reporting/create` and it is **never persisted** until you explicitly save — and the constant
+"Guardada" toasts are only auto-saving the data-source edits, not the report. Close the tab and the
+whole canvas is gone. (That is exactly what happened; hence this recipe.)
+
+**Do this instead:** go to <https://lookerstudio.google.com> → **Crear → Informe** (Create → Report).
+Then immediately confirm it persisted:
+
+- the URL becomes `…/reporting/<long-id>/page/<id>/edit` (a real report id), and
+- the top-right shows **"Compartir" and "Ver"** buttons (a *new/unsaved* report shows "Guardar y
+  compartir" instead).
+
+If you see those, the report is saved and every later edit auto-saves. Rename it now (top-left title)
+to **"Parabolic Reversal — Setup Funnel (in-sample)"**.
+
+## Step 1 — connect both marts
+
+Add data → **BigQuery** → project `quant-trading-502717` → dataset `equities_marts` → add
+`fct_setup_funnel`. Then Add data again and add `fct_signal_candidates`. (The Linking API URL that
+pre-connects both *usually* errors on the `CREATE` step — the manual path above is the reliable one.)
+Owner credentials is fine.
+
+## Step 2 — the one calculated field: Win rate %
+
+On the `fct_setup_funnel` source: Add a field → name it **`Win rate %`**, formula exactly:
 
 ```
-https://lookerstudio.google.com/reporting/create?c.reportId=CREATE&ds.ds0.connector=bigQuery&ds.ds0.type=TABLE&ds.ds0.projectId=quant-trading-502717&ds.ds0.datasetId=equities_marts&ds.ds0.tableId=fct_setup_funnel&ds.ds0.billingProjectId=quant-trading-502717&ds.ds1.connector=bigQuery&ds.ds1.type=TABLE&ds.ds1.projectId=quant-trading-502717&ds.ds1.datasetId=equities_marts&ds.ds1.tableId=fct_signal_candidates&ds.ds1.billingProjectId=quant-trading-502717
+100 * SUM(CASE WHEN is_winner THEN 1 ELSE 0 END) / SUM(CASE WHEN is_traded THEN 1 ELSE 0 END)
 ```
 
-If it asks to authorize the BigQuery connector, allow it (this is your own project). `ds0` is the
-funnel; `ds1` is the signal candidates.
+`is_winner`/`is_traded` are booleans; the `CASE … THEN 1 ELSE 0` casts them so `SUM` works. The `×100`
+makes it read as a percentage number (78,9) — simpler and more robust than fighting the field-type =
+Percent dropdown, which renders below the fold on a short screen. It should evaluate to **78,9**
+(= 258/327). This field feeds both the KPI scorecard and the by-`days_up` chart.
 
-**Manual fallback** if the link misbehaves: New report → Add data → BigQuery → project
-`quant-trading-502717` → dataset `equities_marts` → add `fct_setup_funnel`, then repeat for
-`fct_signal_candidates`.
+## Step 3 — the caveat text box (do it first so it's never forgotten)
 
----
+Insert → Texto, full width across the top. Paste verbatim:
 
-## Step 1 — the caveat box (do this FIRST, so it's never forgotten)
+> Parabolic Reversal — Setup Funnel (IN-SAMPLE). Walk-forward validation pending. Win rate 258/327
+> executed trades; 582 of 909 candidates never triggered. Signals reimplement the entry rules on
+> 1-min bars — they do NOT reproduce or validate the tick backtest (57.5% overlap).
 
-Insert → Text. Put it across the top. Paste verbatim — this is the honesty line the whole project
-rests on:
+## Step 4 — six elements (with the exact values they showed)
 
-> **All figures in-sample.** Walk-forward out-of-sample validation in progress. Win rate is
-> 258/327 executed trades; 582 of 909 candidate setups never triggered. `fct_signal_candidates`
-> reimplements the entry rules on 1-minute bars — it does **not** reproduce or validate the
-> tick-based backtest (57.5% overlap).
+Grain matters: elements 1–4 read **fct_setup_funnel**; element 6 reads **fct_signal_candidates**. Set
+each chart's data source explicitly (the panel defaults to whichever source was used last).
 
-## Step 2 — five charts
+| # | element | type | source | dimension → metric | shows |
+|---|---|---|---|---|---|
+| 1 | **Win rate** | Scorecard | fct_setup_funnel | metric = `Win rate %` | **78,9** |
+| 2 | **Candidate setups** | Scorecard | fct_setup_funnel | metric = `Record Count` | **909** |
+| 3 | **Net PnL (in-sample)** | Scorecard | fct_setup_funnel | metric = `SUM(pnl)` | **580.381,32** |
+| 4 | **The funnel** | Column/Bar | fct_setup_funnel | `funnel_stage` → `Record Count` | never_triggered **582**, won **258**, lost **69** |
+| 5 | **Win rate by run-up** | Column/Bar | fct_setup_funnel | `days_up` → `Win rate %` | rises ~78 (1 day) → ~100 (4–5 days) |
+| 6 | **Signals over time** | Time series | fct_signal_candidates | `session_date` → `Record Count` | activity spikes across 2020–2023 |
 
-Grain matters: the first four read **fct_setup_funnel** (one row per setup); the fifth reads
-**fct_signal_candidates** (one row per signal bar). Set each chart's data source explicitly.
+Layout that worked: caveat banner on top; the three scorecards in a row beneath it (select all three →
+**Organizar → Alinear** to line them up); the funnel and the by-`days_up` bar side by side; the time
+series full-width along the bottom.
 
-1. **The funnel — the centrepiece.** Chart: Bar. Source: `fct_setup_funnel`.
-   - Dimension: `funnel_stage`
-   - Metric: `Record Count`
-   - Sort descending. You'll see `never_triggered` 582, `won` 258, `lost` 69. Optionally reorder to
-     candidate → traded → won with a manual sort. The point is that 582 is visibly the biggest bar.
+Element 5 is the finding worth narrating in an interview: **the fade wins more often the larger the
+prior run-up.** Element 6 is the "monitoring" view — it also visually makes the reimplementation point
+(it fires on far more days than the 909 tick-backtest setups; see the README finding).
 
-2. **Win rate by `days_up`.** Chart: Bar or Table. Source: `fct_setup_funnel`.
-   - Dimension: `days_up`
-   - Metric: create a calculated field `win_rate` = `SUM(CAST(is_winner AS INT64)) / SUM(CAST(is_traded AS INT64))`, format as %.
-   - Answers "does a longer prior run-up change the odds?"
+## Step 5 — publish view-only, then link it
 
-3. **PnL distribution.** Chart: Histogram (or Bar by symbol). Source: `fct_setup_funnel`.
-   - Metric: `pnl`, filtered to `is_traded = true`. Shows the spread of outcomes, not just the mean.
-
-4. **Extension vs outcome.** Chart: Scatter. Source: `fct_setup_funnel`.
-   - X: `max_vwap_extension_ratio`  Y: `pnl`  Colour: `funnel_stage`, filter `has_bar_data = true`.
-   - The strategy's thesis is "fade the extension" — this is where you'd see it hold or not.
-
-5. **Signals over time.** Chart: Time series. Source: `fct_signal_candidates`.
-   - Dimension: `session_date`  Metric: `Record Count`, optionally filter `is_best_setup_of_day = true`.
-   - Shows when the entry logic fired across 2020–2024.
-
-## Step 3 — share
-
-- Top-right **Share** → **Manage access** → General access → **Anyone with the link** → Viewer.
-- Copy the link. Paste it into `README.md` where it says the dashboard is pending, and into the
-  status table. Commit.
-
-Sharing publicly is your call to make — it exposes the marts' aggregates (not the raw bars) to
-anyone with the link. Given the data is your own micro-cap research and carries the in-sample
-caveat, public-view is normally fine for a CV piece, but it's your decision to click.
-
----
+Top-right **Compartir** → acceso general → **Cualquier usuario con el enlace → Lector** (Anyone with
+the link → Viewer). Copy the link, paste it into `README.md` (the status line + the deliverables
+section), and commit. Publishing exposes the marts' *aggregates* (not raw bars); given it's your own
+in-sample research with the caveat attached, view-only is normal for a CV piece — but the click is
+yours.
 
 ## What to be ready to say about it
 
-The dashboard is a presentation of the marts, nothing more — all the logic lives in dbt. If asked
-"where does the win rate come from," the answer is `fct_setup_funnel`, not a Looker calculation:
-the funnel stages are computed in SQL and tested, and Looker only counts them. That separation —
-logic in the warehouse, presentation in BI — is itself the point.
+The dashboard presents the marts, nothing more — the logic is in dbt. "Where does the win rate come
+from?" → `fct_setup_funnel`, computed in SQL and tested; Looker only counts. Logic in the warehouse,
+presentation in BI — that separation is the point.
