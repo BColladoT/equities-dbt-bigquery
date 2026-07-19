@@ -1,10 +1,18 @@
 # equities-dbt-bigquery
 
-A dbt Core project that models **20.4M rows of 1-minute equity bars** into a signal-candidate mart
-and a setup funnel — staging → intermediate → marts, 9 models, 53 tests, two warehouse targets.
+**Built a dbt + BigQuery analytics pipeline — designed, tested, and documented data models that
+turn raw market data into analysis-ready marts.**
 
-Built on real data from my own [parabolic-reversal trading engine](https://github.com/BColladoT/parabolic-reversal-trading-engine):
-573 micro-cap symbols, 2020–2024.
+A layered dbt project (staging → intermediate → marts) over real data from my own
+[parabolic-reversal trading engine](https://github.com/BColladoT/parabolic-reversal-trading-engine):
+micro-cap equity bars modeled into a signal-candidate mart and a setup funnel, with data-quality
+tests and auto-generated lineage docs. Runs on DuckDB locally and BigQuery in prod from one codebase.
+
+<!-- CV line (verbatim): Built a dbt + BigQuery analytics pipeline — designed, tested, and
+     documented data models that turn raw market data into analysis-ready marts. -->
+
+_(Scale/volume specifics — row counts, test counts, cost, the reimplementation finding — live in
+the sections below. They're interview ammunition, not the headline.)_
 
 ---
 
