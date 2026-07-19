@@ -29,7 +29,8 @@ production, and nothing here should be read that way.
 | **DuckDB dev target** | ✅ runs today, on any machine, no cloud account needed |
 | **BigQuery prod target** | ✅ **loaded + built** — 20,391,519 rows, project `quant-trading-502717`, EU |
 | **Cost so far** | ✅ **€0.00** — 1.26 GB of a 10 GiB free tier; €1 budget alert live |
-| **Looker Studio dashboard** | ⏳ ~10-min build — [exact recipe](docs/looker_studio_guide.md) (assembled + verified once against the live marts) |
+| **Primary visual** | ✅ dbt lineage graph — rendered below (Mermaid) + interactive via `dbt docs` |
+| **Looker Studio dashboard** | ⚪ optional — [recipe kept](docs/looker_studio_guide.md) for a ~10-min spin-up if a role specifically wants Looker/BI; not a core deliverable |
 | **All metrics below** | ⚠️ **IN-SAMPLE.** Walk-forward out-of-sample validation in progress. |
 
 Both targets are real and both have run. The 20.4M-row bar table is loaded into BigQuery
@@ -54,29 +55,40 @@ or validated results.
 
 ## The DAG
 
-```
-SOURCES              STAGING (views)          INTERMEDIATE                MARTS (tables)
-                     source-shaped only       strategy logic              what BI reads
+```mermaid
+graph LR
+    subgraph SRC["Sources and seeds"]
+        bars[("bars_1min")]
+        setups["setups seed"]
+        results["backtest_results seed"]
+    end
+    subgraph STG["Staging - views"]
+        sbar["stg_alpaca__bars_1min"]
+        sset["stg_backtest__setups"]
+        sres["stg_backtest__results"]
+    end
+    subgraph INT["Intermediate"]
+        vwap["int_bars_session_vwap"]
+        exh["int_bars_exhaustion"]
+        feat["int_session_features"]
+        out["int_setup_outcomes"]
+    end
+    subgraph MRT["Marts"]
+        sig["fct_signal_candidates"]
+        fun["fct_setup_funnel"]
+    end
 
-bars_1min  ──►  stg_alpaca__bars_1min  ──►  int_bars_session_vwap  ──┐
-20.4M prod      cast, UTC→ET, session        09:30 ET anchor,        │
-220k dev        phase. NO filtering.         cumulative VWAP          │
-                                                      │              │
-                                                      ▼              │
-                                              int_bars_exhaustion ───┼──► fct_signal_candidates
-                                              V5's 2-of-3 criteria   │    bar grain, signal fires
-                                                      │              │
-                                                      ▼              │
-                                              int_session_features   │
-                                              → (symbol, session_date)
-                                                      │
-setups.csv ──►  stg_backtest__setups  ──┐             │
-909 seed                                ├──► int_setup_outcomes ─────┴──► fct_setup_funnel
-results.csv ─►  stg_backtest__results ──┘    candidate→traded→won         909→327→258
-909 seed
+    bars --> sbar --> vwap --> exh
+    setups --> sset --> out
+    results --> sres --> out
+    exh --> feat --> fun
+    exh --> sig
+    out --> fun
 ```
 
-`dbt docs generate && dbt docs serve` for the interactive lineage graph.
+*GitHub renders the graph above natively — it is generated from the same 11 dependency edges dbt
+tracks in `manifest.json`.* For the **full interactive lineage graph** (column-level detail, tests,
+and compiled SQL per model): `dbt docs generate && dbt docs serve`.
 
 ### The layer rule
 
