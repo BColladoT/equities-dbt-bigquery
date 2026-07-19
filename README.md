@@ -8,6 +8,15 @@ A layered dbt project (staging → intermediate → marts) over real data from m
 micro-cap equity bars modeled into a signal-candidate mart and a setup funnel, with data-quality
 tests and auto-generated lineage docs. Runs on DuckDB locally and BigQuery in prod from one codebase.
 
+> ### 🔗 This repo is one half of a two-part system — both built by me
+>
+> - **[parabolic-reversal-trading-engine](https://github.com/BColladoT/parabolic-reversal-trading-engine)** (Python) — generates the raw market data.
+> - **this repo** (dbt + BigQuery) — models that data into tested, documented, analysis-ready marts.
+>
+> They're deliberately **separate repos**, because analytics-engineering code lives apart from
+> application code — the way it's structured on a real data team. Same author, one end-to-end
+> pipeline: **the engine produces the data; this project turns it into analysis.**
+
 <!-- CV line (verbatim): Built a dbt + BigQuery analytics pipeline — designed, tested, and
      documented data models that turn raw market data into analysis-ready marts. -->
 
