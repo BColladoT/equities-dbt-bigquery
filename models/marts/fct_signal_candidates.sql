@@ -23,7 +23,7 @@
 -- "fix" it by nudging 1.15 / 0.70 / 0.93, we have fitted to the answer and the model means
 -- nothing. Thresholds are frozen at the v5_strict.py:47-50 values. A divergence is a finding to
 -- explain, never a number to tune. If the gap looks embarrassing, it gets published anyway.
--- See docs/superpowers/specs/ 5.1 and the README's "Finding" section.
+-- See the README's "Finding" section.
 -- ===========================================================================================
 --
 -- WHY THIS MART EXISTS AT ALL: without it, nothing downstream reads the bar pipeline, and the

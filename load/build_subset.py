@@ -19,7 +19,7 @@ Reads:  <ENGINE_REPO>/data/cache/1min_extended/<SYMBOL>_1min_*.parquet
 Deliberately does NOT read <ENGINE_REPO>/data/cache/*.parquet -- despite carrying `_1min_` in
 their filenames, those files contain DAILY bars (verified: 86,400s modal gap, midnight-ET
 timestamps). Trusting the filename there would silently mix daily and minute bars into one table.
-See docs/superpowers/specs/ section 2.
+See the README (ground-truth notes).
 """
 from __future__ import annotations
 

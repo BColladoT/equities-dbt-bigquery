@@ -6,7 +6,7 @@
 -- THRESHOLDS ARE FROZEN at v5_strict.py:47-50. They are NOT tuning knobs. If our signal count
 -- disagrees with the tick backtest, that is a finding to explain -- never a number to adjust.
 -- Fitting 1.15 / 0.70 / 0.93 to make the counts line up would mean fitting to the answer, and
--- the model would then mean precisely nothing. See docs/superpowers/specs/ 5.1.
+-- the model would then mean precisely nothing. See the README (Finding).
 --
 -- A view, not a table: it adds a single window function to a model that is already materialised,
 -- and nothing here is expensive enough to be worth paying storage for.

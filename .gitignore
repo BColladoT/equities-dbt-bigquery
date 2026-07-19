@@ -14,3 +14,7 @@ build/
 # on a fresh clone. Real credentials live in gcloud's application-default store, outside the repo.
 *.duckdb
 *.duckdb.wal
+
+# Internal prep / design docs — kept local, not part of the public portfolio repo
+docs/superpowers/
+INTERVIEW.md

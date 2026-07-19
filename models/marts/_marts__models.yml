@@ -11,7 +11,7 @@ models:
       60-second bars with VWAP anchored at its first tick bar; this runs on Alpaca 1-minute bars
       anchored at 09:30 ET. Counts differ BY CONSTRUCTION and the two do NOT validate each other.
       Thresholds frozen at v5_strict.py:47-50 -- a divergence is a finding to explain, never a
-      number to tune. See docs/superpowers/specs/ 5.1.
+      number to tune. See the README (Finding).
 
       IN-SAMPLE; walk-forward out-of-sample validation pending.
     columns:

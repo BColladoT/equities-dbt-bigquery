@@ -4,7 +4,7 @@
 --
 -- This is a REPORT of a backtest this project did not run. Nothing here is recomputed from bars;
 -- fct_signal_candidates does that separately and deliberately does not reconcile with it.
--- See docs/superpowers/specs/ 5.1.
+-- See the README (Finding).
 --
 -- `win`/`loss` arrive as 0/1 integers. They become real booleans here, because `is_win` reads as
 -- a fact and `win = 1` reads as a puzzle.

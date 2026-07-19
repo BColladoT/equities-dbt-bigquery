@@ -36,7 +36,7 @@
 -- FIDELITY NOTE: V5 (v5_strict.py:75-89) anchors at the first bar of its TICK feed with no 09:30
 -- filter. We anchor at 09:30 by explicit choice -- better defined, and it matches the documented
 -- intent. This is one reason fct_signal_candidates cannot reproduce the tick backtest. See
--- docs/superpowers/specs/ 5.1.
+-- the README (Finding).
 --
 -- DIVISION: `a / nullif(b, 0)` rather than BigQuery's safe_divide(), which DuckDB does not have.
 -- Same behaviour -- divide by zero yields null instead of raising -- in portable SQL.

@@ -256,7 +256,6 @@ seeds/                 909 setups + 909 backtest results (static, version-contro
 load/build_subset.py   --full (573 symbols → bq load) | --sample (10 symbols → committed)
 load/load_to_bq.sh     bq load, partitioned + clustered
 data/sample/           220,388 real rows so `dbt build` works on a fresh clone
-docs/superpowers/      the design spec and the 14-task build plan, including what changed and why
 ```
 
 ## Running it
@@ -268,9 +267,8 @@ python -m venv .venv && .venv/Scripts/pip install -r requirements.txt
 .venv/Scripts/dbt docs generate && .venv/Scripts/dbt docs serve
 ```
 
-## See also
+## Design notes
 
-- [`INTERVIEW.md`](INTERVIEW.md) — my own answers on why this is built the way it is
-- [`docs/superpowers/specs/`](docs/superpowers/specs/) — the design, including four assumptions
-  that measurement disproved
-- [`docs/superpowers/plans/`](docs/superpowers/plans/) — the build plan
+The reasoning behind the layer boundaries, the frozen thresholds, and the reimplementation finding
+is documented inline in each model and summarised in the sections above. `dbt docs generate` renders
+the full lineage graph with per-model documentation and compiled SQL.
